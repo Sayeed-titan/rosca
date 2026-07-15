@@ -1,0 +1,616 @@
+// CircleFund — Prisma schema
+//
+// Prisma 7 notes (these differ from most docs/tutorials, so don't "fix" them):
+//  - provider is `prisma-client` (not `prisma-client-js`); `output` is mandatory.
+//  - The generated client is a build artifact and is TypeScript by design — the
+//    generator has no JavaScript output mode. Never edit or import it directly;
+//    go through src/core/db/prisma.js.
+//  - The datasource URL lives in prisma.config.ts, not here.
+//
+// Two conventions run through every model:
+//
+//  1. MONEY IS NEVER A FLOAT. All amounts are BigInt *minor units* (paisa/cents),
+//     paired with an ISO-4217 `currency` and its `currencyExponent`. Percentages are
+//     integer basis points (bps): 250 = 2.50%. Nothing in this schema can drift.
+//
+//  2. EVERY TENANT ROW CARRIES organizationId. Scoping is enforced by a Prisma
+//     Client Extension (src/core/db/tenant.js), not by developers remembering a
+//     where-clause. Prisma 7 removed $use middleware, so extensions are the only hook.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===========================================================================
+// Tenancy & identity
+// ===========================================================================
+
+/// Tenant root. Every business row hangs off exactly one Organization.
+model Organization {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  logoUrl   String?
+  /// Org default; a Committee may still override its own currency.
+  currency  String    @default("BDT")
+  timezone  String    @default("Asia/Dhaka")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  memberships      Membership[]
+  members          Member[]
+  committees       Committee[]
+  committeeMembers CommitteeMember[]
+  payments         Payment[]
+  draws         Draw[]
+  transactions  Transaction[]
+  receipts      Receipt[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  settings      Setting[]
+
+  @@index([deletedAt])
+}
+
+/// Login identity. A User is global; their powers come from Membership rows.
+/// One person can belong to several organizations with a different role in each.
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  /// Argon2id hash. Null for OAuth-only users. Never leaves the server.
+  passwordHash  String?
+  /// Platform-level operator, orthogonal to any org role. Deliberately a boolean
+  /// rather than an OrgRole value: super admin exists *outside* the org tenancy
+  /// model, and conflating the two is how cross-tenant leaks happen.
+  isSuperAdmin  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  accounts      Account[]
+  sessions      Session[]
+  memberships   Membership[]
+  memberProfile Member[]
+  auditLogs     AuditLog[]
+  recordedPayments Payment[] @relation("PaymentRecordedBy")
+  conductedDraws   Draw[]    @relation("DrawConductedBy")
+  notifications    Notification[]
+
+  @@index([deletedAt])
+}
+
+/// Role of a User within one Organization. This is the multi-tenant join table.
+model Membership {
+  id             String    @id @default(cuid())
+  organizationId String
+  userId         String
+  role           OrgRole   @default(MEMBER)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+enum OrgRole {
+  ORG_OWNER
+  MANAGER
+  MEMBER
+}
+
+// --- Auth.js v5 adapter tables. Shape is dictated by @auth/prisma-adapter. -----
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ===========================================================================
+// ROSCA domain
+// ===========================================================================
+
+/// A participant. Distinct from User on purpose: most ROSCA members are recorded
+/// by an organiser and never log in. `userId` links a Member to a login only if
+/// and when they get portal access.
+model Member {
+  id               String       @id @default(cuid())
+  organizationId   String
+  userId           String?
+  photoUrl         String?
+  fullName         String
+  phone            String
+  email            String?
+  address          String?
+  /// NID / passport. Unique per org where present — Postgres treats NULLs as
+  /// distinct, so members without one don't collide.
+  nationalId       String?
+  emergencyContact String?
+  occupation       String?
+  joiningDate      DateTime     @default(now())
+  status           MemberStatus @default(ACTIVE)
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  deletedAt        DateTime?
+
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  committeeMembers CommitteeMember[]
+  notifications    Notification[]
+
+  @@unique([organizationId, nationalId])
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, fullName])
+  @@index([organizationId, phone])
+  @@index([userId])
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+/// One ROSCA. `totalMembers` cycles; each cycle collects `contributionMinor` from
+/// every member and pays the whole pot to exactly one of them.
+model Committee {
+  id             String    @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+
+  /// Per-member, per-cycle contribution, in minor units.
+  contributionMinor BigInt
+  currency          String @default("BDT")
+  /// Minor units per major unit, as a power of 10. 2 => 100 paisa in 1 taka.
+  currencyExponent  Int    @default(2)
+
+  /// Target roster size, and therefore the number of cycles.
+  totalMembers Int
+
+  startDate DateTime
+  endDate   DateTime?
+
+  drawFrequency DrawFrequency @default(MONTHLY)
+  /// MONTHLY: day of month 1-31. WEEKLY: ISO day of week 1-7 (Mon=1).
+  drawDay       Int           @default(1)
+
+  /// Days after the due date before a payment counts as late.
+  gracePeriodDays Int         @default(0)
+  lateFeeType     LateFeeType @default(NONE)
+  /// Used when lateFeeType = FLAT.
+  lateFeeFlatMinor BigInt     @default(0)
+  /// Used when lateFeeType = PERCENT. Basis points of the contribution: 250 = 2.50%.
+  /// Integer bps rather than a float percentage — see the money convention above.
+  lateFeePercentBps Int       @default(0)
+
+  status    CommitteeStatus @default(DRAFT)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  deletedAt DateTime?
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      CommitteeMember[]
+  payments     Payment[]
+  draws        Draw[]
+  transactions Transaction[]
+
+  @@index([organizationId, deletedAt])
+  @@index([organizationId, status])
+  @@index([organizationId, startDate])
+}
+
+enum DrawFrequency {
+  WEEKLY
+  MONTHLY
+}
+
+enum LateFeeType {
+  NONE
+  FLAT
+  PERCENT
+}
+
+enum CommitteeStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+/// A Member's seat in a Committee.
+///
+/// Note what is NOT here: `hasReceived`. Whether a member has taken the pot is
+/// derived from the Draw table, which already enforces it via a unique constraint.
+/// Storing it too would create a second source of truth that could silently drift
+/// from the first — the exact class of bug that loses people's money.
+model CommitteeMember {
+  id             String @id @default(cuid())
+  organizationId String
+  committeeId    String
+  memberId       String
+
+  /// Seat number in the roster, 1-based.
+  position  Int
+  /// Optional pre-assigned payout order for committees that don't draw randomly.
+  drawOrder Int?
+
+  joinedAt DateTime               @default(now())
+  status   CommitteeMemberStatus  @default(ACTIVE)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  committee    Committee    @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  member       Member       @relation(fields: [memberId], references: [id], onDelete: Restrict)
+  payments     Payment[]
+  wonDraw      Draw?        @relation("DrawWinner")
+
+  /// A member holds at most one seat per committee.
+  @@unique([committeeId, memberId])
+  /// Two members cannot share a seat number.
+  @@unique([committeeId, position])
+  @@index([organizationId])
+  @@index([committeeId, deletedAt])
+  @@index([memberId])
+}
+
+enum CommitteeMemberStatus {
+  ACTIVE
+  LEFT
+  DEFAULTED
+}
+
+// ===========================================================================
+// Money — append-only ledger
+// ===========================================================================
+
+/// A payment record. APPEND-ONLY: rows are never edited and never soft-deleted.
+///
+/// A mistake is corrected by inserting a REVERSAL row pointing at the original via
+/// `reversesPaymentId`. That keeps history truthful — an edited or vanishing payment
+/// row would make the audit trail a work of fiction. This is why there is no
+/// `deletedAt` here, unlike every other model.
+///
+/// Paid / Due / Late / Advance are computed from these rows. They are never stored.
+model Payment {
+  id                String @id @default(cuid())
+  organizationId    String
+  committeeId       String
+  committeeMemberId String
+
+  /// Which cycle this settles. 1-based, and <= committee.totalMembers.
+  cycleNumber Int
+
+  /// Signed minor units. Positive for money in, negative for a REVERSAL.
+  amountMinor  BigInt
+  /// Late fee charged on this payment, in minor units. Positive or zero.
+  lateFeeMinor BigInt      @default(0)
+  kind         PaymentKind @default(CONTRIBUTION)
+
+  /// Set only on REVERSAL rows: the payment being undone.
+  reversesPaymentId String?  @unique
+  reversalReason    String?
+
+  paidAt          DateTime
+  method          PaymentMethod @default(CASH)
+  referenceNumber String?
+  notes           String?
+
+  recordedByUserId String?
+  createdAt        DateTime @default(now())
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  committee       Committee       @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  committeeMember CommitteeMember @relation(fields: [committeeMemberId], references: [id], onDelete: Restrict)
+  recordedBy      User?           @relation("PaymentRecordedBy", fields: [recordedByUserId], references: [id], onDelete: SetNull)
+
+  reverses    Payment?     @relation("PaymentReversal", fields: [reversesPaymentId], references: [id], onDelete: Restrict)
+  reversedBy  Payment?     @relation("PaymentReversal")
+  receipt     Receipt?
+  transactions Transaction[]
+
+  @@index([organizationId])
+  @@index([committeeId, cycleNumber])
+  @@index([committeeMemberId, cycleNumber])
+  @@index([paidAt])
+}
+
+enum PaymentKind {
+  CONTRIBUTION
+  LATE_FEE
+  ADJUSTMENT
+  REVERSAL
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  BKASH
+  NAGAD
+  ROCKET
+  CARD
+  OTHER
+}
+
+/// Double-entry-ish movement log for the committee pot. Every contribution in and
+/// every payout out lands here, so a committee's balance is a single SUM over
+/// signed amounts and can be reconciled against Payment and Draw independently.
+model Transaction {
+  id             String @id @default(cuid())
+  organizationId String
+  committeeId    String
+
+  type TransactionType
+  /// Signed minor units: positive = into the pot, negative = out of the pot.
+  amountMinor BigInt
+
+  paymentId String?
+  drawId    String?
+
+  occurredAt  DateTime @default(now())
+  description String?
+  createdAt   DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  committee    Committee    @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  payment      Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  draw         Draw?        @relation(fields: [drawId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([committeeId, occurredAt])
+  @@index([paymentId])
+  @@index([drawId])
+}
+
+enum TransactionType {
+  CONTRIBUTION_IN
+  LATE_FEE_IN
+  PAYOUT_OUT
+  ADJUSTMENT
+}
+
+/// Immutable printable receipt for a payment. `snapshot` freezes exactly what was
+/// issued, so a reprint years later shows the original, not today's re-rendering.
+model Receipt {
+  id             String @id @default(cuid())
+  organizationId String
+  paymentId      String @unique
+
+  /// Human-facing sequential number, unique per organization.
+  receiptNumber String
+  issuedAt      DateTime @default(now())
+  /// Frozen copy of the rendered receipt data.
+  snapshot      Json
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payment      Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, receiptNumber])
+  @@index([organizationId])
+}
+
+// ===========================================================================
+// The draw — commit / reveal, verifiable after the fact
+// ===========================================================================
+
+/// One cycle's draw.
+///
+/// Fairness is not "trust the server". Before drawing we publish
+/// `seedCommitment = SHA256(serverSeed)`; afterwards we reveal `serverSeed`. Anyone
+/// can then recompute the hash and re-derive the winner and check we didn't cheat.
+/// Rigging a draw would require breaking SHA-256 or predicting the seed pre-commit.
+///
+/// `eligibleSnapshot` freezes the exact ordered candidate list the index was drawn
+/// against — without it, later roster edits would make old draws unverifiable.
+/// `algorithmVersion` keeps historical draws checkable after the algorithm changes.
+///
+/// The two unique constraints below are the real guarantees. They make the spec's
+/// rules physically impossible to violate, rather than merely checked in code that
+/// a future refactor could bypass.
+model Draw {
+  id             String @id @default(cuid())
+  organizationId String
+  committeeId    String
+
+  cycleNumber Int
+  drawnAt     DateTime @default(now())
+
+  winnerCommitteeMemberId String @unique
+
+  /// SHA-256 of serverSeed, published BEFORE the draw.
+  seedCommitment String
+  /// Revealed AFTER the draw so third parties can verify. Null only while pending.
+  serverSeed     String?
+  /// Ordered committeeMemberIds the winner index was drawn against.
+  eligibleSnapshot Json
+  /// Index selected within eligibleSnapshot.
+  winnerIndex      Int
+  algorithmVersion Int @default(1)
+
+  /// Pot paid to the winner this cycle, in minor units.
+  payoutMinor BigInt
+
+  mode DrawMode @default(MANUAL)
+
+  /// True when an admin drew despite incomplete collections. Requires a reason,
+  /// and is surfaced in the audit trail — an override must never be quiet.
+  isOverride     Boolean @default(false)
+  overrideReason String?
+
+  conductedByUserId String?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  committee    Committee       @relation(fields: [committeeId], references: [id], onDelete: Cascade)
+  winner       CommitteeMember @relation("DrawWinner", fields: [winnerCommitteeMemberId], references: [id], onDelete: Restrict)
+  conductedBy  User?           @relation("DrawConductedBy", fields: [conductedByUserId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  /// A cycle can be drawn exactly once — even if two admins click simultaneously.
+  @@unique([committeeId, cycleNumber])
+  @@index([organizationId])
+  @@index([committeeId, cycleNumber])
+  @@index([drawnAt])
+}
+
+enum DrawMode {
+  MANUAL
+  AUTOMATIC
+  SCHEDULED
+}
+
+// ===========================================================================
+// Cross-cutting
+// ===========================================================================
+
+/// Outbound notification. `channel` is stored rather than assumed so that adding
+/// SMS/WhatsApp later is a new adapter, not a schema migration.
+model Notification {
+  id             String @id @default(cuid())
+  organizationId String
+  userId         String?
+  memberId       String?
+
+  channel NotificationChannel
+  type    NotificationType
+  title   String
+  body    String
+  payload Json?
+
+  status NotificationStatus @default(PENDING)
+  sentAt DateTime?
+  readAt DateTime?
+  error  String?
+
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  member       Member?      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@index([userId, readAt])
+  @@index([memberId])
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+enum NotificationType {
+  PAYMENT_DUE
+  PAYMENT_LATE
+  WINNER_ANNOUNCED
+  COMMITTEE_COMPLETED
+  GENERIC
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+/// Append-only audit trail. Written inside the same transaction as the mutation it
+/// describes, so it cannot silently fall out of sync. Never updated, never deleted —
+/// hence no updatedAt/deletedAt.
+model AuditLog {
+  id             String  @id @default(cuid())
+  /// Null for platform-level events (e.g. a super admin acting outside any org).
+  organizationId String?
+  actorUserId    String?
+
+  /// Verb-object, e.g. "payment.create", "draw.run", "auth.login".
+  action     String
+  entityType String?
+  entityId   String?
+
+  /// State before/after. Redact secrets before they get here.
+  before Json?
+  after  Json?
+
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
+  @@index([action])
+}
+
+/// Per-org key/value settings (draw algorithm, default late fee, theme, locale...).
+/// Json value keeps new settings from requiring a migration each time.
+model Setting {
+  id             String @id @default(cuid())
+  organizationId String
+  key            String
+  value          Json
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
