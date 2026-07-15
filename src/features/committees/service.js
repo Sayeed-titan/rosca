@@ -71,11 +71,11 @@ export async function updateCommittee(db, actor, id, input) {
         { fields: { contribution: ["Locked once money has moved"] } }
       );
     }
-    if (input.totalMembers !== before.totalMembers) {
+    if (input.totalSeats !== before.totalSeats) {
       return err(
         ErrorCode.CONFLICT,
         "This committee already has payments or draws recorded, so the member count can no longer change.",
-        { fields: { totalMembers: ["Locked once money has moved"] } }
+        { fields: { totalSeats: ["Locked once money has moved"] } }
       );
     }
   }

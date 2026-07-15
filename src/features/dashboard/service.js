@@ -44,7 +44,7 @@ export async function getDashboardStats(organizationId) {
         id: true,
         name: true,
         contributionMinor: true,
-        totalMembers: true,
+        totalSeats: true,
         startDate: true,
         drawFrequency: true,
         drawDay: true,

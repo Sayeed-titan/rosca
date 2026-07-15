@@ -199,7 +199,7 @@ enum MemberStatus {
   SUSPENDED
 }
 
-/// One ROSCA. `totalMembers` cycles; each cycle collects `contributionMinor` from
+/// One ROSCA. `totalSeats` cycles; each cycle collects `contributionMinor` from
 /// every member and pays the whole pot to exactly one of them.
 model Committee {
   id             String    @id @default(cuid())
@@ -213,8 +213,9 @@ model Committee {
   /// Minor units per major unit, as a power of 10. 2 => 100 paisa in 1 taka.
   currencyExponent  Int    @default(2)
 
-  /// Target roster size, and therefore the number of cycles.
-  totalMembers Int
+  /// Number of SEATS, and therefore the number of cycles. NOT a headcount: one
+  /// member may hold several seats, so 8 seats might be 5 people.
+  totalSeats Int
 
   startDate DateTime
   endDate   DateTime?
@@ -266,9 +267,22 @@ enum CommitteeStatus {
   CANCELLED
 }
 
-/// A Member's seat in a Committee.
+/// A SEAT (share) in a Committee, held by a Member.
 ///
-/// Note what is NOT here: `hasReceived`. Whether a member has taken the pot is
+/// One member may hold SEVERAL seats. This is how real committees work: a person
+/// takes two or three shares, pays the contribution once per seat each cycle, and
+/// is eligible to receive the pot once per seat (in different cycles). A committee
+/// of 8 seats might be 5 people.
+///
+/// That is why every money and draw record keys off `committeeMemberId` — the SEAT
+/// — and never off `memberId`. It follows that:
+///   - UNIQUE(winnerCommitteeMemberId) on Draw means each SEAT wins once, so a
+///     two-seat member can legitimately win twice.
+///   - a payment is owed per seat, so the collection gate counts seats.
+///   - `Committee.totalSeats` is the number of seats, and therefore the number of
+///     cycles — not a headcount.
+///
+/// Note what is NOT here: `hasReceived`. Whether a seat has taken the pot is
 /// derived from the Draw table, which already enforces it via a unique constraint.
 /// Storing it too would create a second source of truth that could silently drift
 /// from the first — the exact class of bug that loses people's money.
@@ -296,13 +310,17 @@ model CommitteeMember {
   payments     Payment[]
   wonDraw      Draw?        @relation("DrawWinner")
 
-  /// A member holds at most one seat per committee.
-  @@unique([committeeId, memberId])
-  /// Two members cannot share a seat number.
+  /// Deliberately NOT unique on (committeeId, memberId): a member may hold
+  /// multiple seats. Taking two or three shares is normal in a real committee.
+  ///
+  /// Seat numbers stay unique, though — two seats cannot share a position, whether
+  /// or not the same person holds both.
   @@unique([committeeId, position])
   @@index([organizationId])
   @@index([committeeId, deletedAt])
   @@index([memberId])
+  /// Answers "how many seats does this member hold here?" without a scan.
+  @@index([committeeId, memberId])
 }
 
 enum CommitteeMemberStatus {
@@ -329,7 +347,7 @@ model Payment {
   committeeId       String
   committeeMemberId String
 
-  /// Which cycle this settles. 1-based, and <= committee.totalMembers.
+  /// Which cycle this settles. 1-based, and <= committee.totalSeats.
   cycleNumber Int
 
   /// Signed minor units. Positive for money in, negative for a REVERSAL.

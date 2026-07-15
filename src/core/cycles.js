@@ -1,7 +1,7 @@
 /**
  * Cycle scheduling.
  *
- * A committee runs exactly `totalMembers` cycles — one payout each, so every member
+ * A committee runs exactly `totalSeats` cycles — one payout each, so every member
  * receives once. Cycle numbers are 1-based.
  *
  * All arithmetic is UTC. Committees are scheduled by calendar date, not by elapsed
@@ -52,7 +52,7 @@ export function cycleGraceDeadline(committee, cycleNumber) {
  * Returns 0 before the first due date.
  */
 export function cyclesElapsed(committee, now = new Date()) {
-  const total = committee.totalMembers;
+  const total = committee.totalSeats;
   let count = 0;
   for (let n = 1; n <= total; n++) {
     if (cycleDueDate(committee, n) <= now) count = n;
@@ -64,12 +64,12 @@ export function cyclesElapsed(committee, now = new Date()) {
 /** The cycle currently being collected — i.e. the next one not yet due, else the last. */
 export function currentCycleNumber(committee, now = new Date()) {
   const elapsed = cyclesElapsed(committee, now);
-  return Math.min(elapsed + 1, committee.totalMembers);
+  return Math.min(elapsed + 1, committee.totalSeats);
 }
 
 /** Next due date in the future, or null once the committee has run its course. */
 export function nextDueDate(committee, now = new Date()) {
-  for (let n = 1; n <= committee.totalMembers; n++) {
+  for (let n = 1; n <= committee.totalSeats; n++) {
     const due = cycleDueDate(committee, n);
     if (due > now) return { cycleNumber: n, dueDate: due };
   }

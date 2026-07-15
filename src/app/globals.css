@@ -246,3 +246,38 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Printing a receipt should yield a clean slip, not a screenshot of the app.
+   Everything except the receipt is hidden, and the dialog is unpinned from its
+   fixed overlay so it flows onto the page. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #receipt-print-area,
+  #receipt-print-area * {
+    visibility: visible;
+  }
+
+  #receipt-print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+
+  [data-slot="dialog-overlay"] {
+    display: none !important;
+  }
+
+  [data-slot="dialog-content"] {
+    position: static !important;
+    transform: none !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    max-width: 100% !important;
+  }
+}

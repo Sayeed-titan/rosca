@@ -14,7 +14,17 @@ import { cyclesElapsed, nextDueDate } from "@/core/cycles";
  */
 export function toCommitteeDto(committee, now = new Date()) {
   const memberCount = committee._count?.members ?? 0;
-  const potMinor = potForCycle(committee.contributionMinor, memberCount);
+
+  // The pot is computed from totalSeats (the agreed roster), NOT from how many
+  // have joined so far. It's one of the committee's defining terms, like the
+  // contribution — a new committee showing "Pot: ৳0.00" until people are assigned
+  // reads as broken rather than empty. `seatsOpen` communicates the under-filled
+  // state instead.
+  //
+  // What a winner actually receives depends on what was actually collected, which
+  // the payment ledger determines at draw time — not this display figure.
+  const potMinor = potForCycle(committee.contributionMinor, committee.totalSeats);
+
   const elapsed = cyclesElapsed(committee, now);
   const next = nextDueDate(committee, now);
 
@@ -38,10 +48,10 @@ export function toCommitteeDto(committee, now = new Date()) {
     currency: committee.currency,
     currencyExponent: committee.currencyExponent,
 
-    totalMembers: committee.totalMembers,
+    totalSeats: committee.totalSeats,
     memberCount,
     /// Seats still to fill before the committee can run.
-    seatsOpen: Math.max(0, committee.totalMembers - memberCount),
+    seatsOpen: Math.max(0, committee.totalSeats - memberCount),
 
     startDate: committee.startDate?.toISOString() ?? null,
     endDate: committee.endDate?.toISOString() ?? null,
@@ -59,7 +69,7 @@ export function toCommitteeDto(committee, now = new Date()) {
     createdAt: committee.createdAt?.toISOString() ?? null,
 
     cyclesElapsed: elapsed,
-    cyclesTotal: committee.totalMembers,
+    cyclesTotal: committee.totalSeats,
     drawsRun: committee._count?.draws ?? 0,
     nextDueDate: next ? next.dueDate.toISOString() : null,
     nextCycleNumber: next ? next.cycleNumber : null,
@@ -73,7 +83,7 @@ export function toCommitteeFormValues(dto) {
     description: dto.description ?? "",
     contribution: dto.contribution ?? "",
     currency: dto.currency ?? "BDT",
-    totalMembers: String(dto.totalMembers ?? 10),
+    totalSeats: String(dto.totalSeats ?? 10),
     startDate: dto.startDate ? dto.startDate.slice(0, 10) : "",
     endDate: dto.endDate ? dto.endDate.slice(0, 10) : "",
     drawFrequency: dto.drawFrequency ?? "MONTHLY",

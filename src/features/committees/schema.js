@@ -40,7 +40,7 @@ const committeeBase = z.object({
   contribution: moneyString("Monthly amount"),
   currency: z.enum(CURRENCIES),
 
-  totalMembers: z.coerce
+  totalSeats: z.coerce
     .number()
     .int()
     .min(2, { message: "A committee needs at least 2 members" })
@@ -97,6 +97,16 @@ export const committeeUpdateSchema = withRules(
   committeeBase.extend({ id: z.string().min(1) })
 );
 
+/** Query params for the committees list. */
+export const committeeListSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(10),
+  q: z.string().trim().max(120).optional().default(""),
+  sort: z.enum(["name", "startDate", "createdAt", "status"]).default("createdAt"),
+  dir: z.enum(["asc", "desc"]).default("desc"),
+  status: z.enum([...COMMITTEE_STATUSES, "ALL"]).default("ALL"),
+});
+
 /** Minor units per major unit, by currency. All of ours happen to use 2. */
 const CURRENCY_EXPONENT = { BDT: 2, USD: 2, EUR: 2, GBP: 2, INR: 2, PKR: 2, AED: 2 };
 
@@ -117,7 +127,7 @@ export function normalizeCommitteeInput(values) {
     currency: values.currency,
     currencyExponent: exponent,
 
-    totalMembers: values.totalMembers,
+    totalSeats: values.totalSeats,
     startDate: new Date(values.startDate),
     endDate: values.endDate ? new Date(values.endDate) : null,
 

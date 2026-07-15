@@ -20,7 +20,7 @@ const BLANK = {
   description: "",
   contribution: "",
   currency: "BDT",
-  totalMembers: "10",
+  totalSeats: "10",
   startDate: new Date().toISOString().slice(0, 10),
   endDate: "",
   drawFrequency: "MONTHLY",
@@ -99,7 +99,7 @@ export function CommitteeFormDialog({ open, onOpenChange, committee }) {
 
             <Field
               form={form}
-              name="totalMembers"
+              name="totalSeats"
               label="Total members"
               type="number"
               min={2}

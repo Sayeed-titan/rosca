@@ -11,7 +11,7 @@ const LIST_SELECT = {
   contributionMinor: true,
   currency: true,
   currencyExponent: true,
-  totalMembers: true,
+  totalSeats: true,
   startDate: true,
   endDate: true,
   drawFrequency: true,

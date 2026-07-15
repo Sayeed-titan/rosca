@@ -133,7 +133,7 @@ async function main() {
         contributionMinor: 500000n,
         currency: "BDT",
         currencyExponent: 2,
-        totalMembers: MEMBERS.length,
+        totalSeats: MEMBERS.length,
         startDate: new Date("2026-01-05"),
         drawFrequency: "MONTHLY",
         drawDay: 5,
