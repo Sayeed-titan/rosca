@@ -210,7 +210,17 @@ describe("recordBulkPayments", () => {
     const m = await prisma.member.create({
       data: { organizationId: org.id, fullName: `Late Batch Member ${SUFFIX}`, phone: "+8806999999" },
     });
-    const seat = await seats.assignSeats(db, actor, { committeeId: committee.id, memberId: m.id, seatCount: 1 });
+
+    // TWO seats, because the number of CYCLES equals the number of SEATS — and
+    // this test pays cycles 1 and 2. `totalSeats: 2` above is only a starting
+    // value: assignSeats syncs it to the real roster (see seats/service.js), so
+    // assigning one seat would silently make this a 1-cycle committee and the
+    // cycle-2 entry would be rejected as out of range.
+    const seat = await seats.assignSeats(db, actor, {
+      committeeId: committee.id,
+      memberId: m.id,
+      seatCount: 2,
+    });
 
     // Paid on the 20th — cycle 1 (due 5th, grace to 8th) is late; cycle 2 (due next
     // month) is not.
@@ -229,7 +239,8 @@ describe("recordBulkPayments", () => {
       ],
     });
 
-    expect(r.ok).toBe(true);
+    // Surface the reason rather than a bare `expected false to be true`.
+    expect(r.ok, r.ok ? "" : JSON.stringify(r.error)).toBe(true);
 
     const rows = await prisma.payment.findMany({
       where: { committeeMemberId: seat.data.seats[0].id },
