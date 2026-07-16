@@ -11,11 +11,13 @@ import { assignSeatsAction } from "../actions";
 /**
  * Assign a member one or more seats.
  *
- * The seat count is the whole point: taking two or three shares is normal, and the
- * dialog says plainly what that commits them to, because it doubles or triples what
- * they owe every cycle.
+ * There is no capacity limit here on purpose — the roster is flexible until the
+ * first draw runs (see seats/service.js). Add whoever, whenever; the committee's
+ * seat count and pot simply grow to match. The seat count is still worth spelling
+ * out plainly, since taking two or three shares doubles or triples what someone
+ * owes every cycle, and that should never be an accident.
  */
-export function AssignSeatsDialog({ open, onOpenChange, committee, members, seatsOpen }) {
+export function AssignSeatsDialog({ open, onOpenChange, committee, members }) {
   const options = useMemo(
     () =>
       members.map((m) => ({
@@ -32,7 +34,7 @@ export function AssignSeatsDialog({ open, onOpenChange, committee, members, seat
       open={open}
       onOpenChange={onOpenChange}
       title="Assign seats"
-      description={`${seatsOpen} of ${committee.totalSeats} seats are free. A member can hold more than one — each seat pays ${committee.contributionDisplay} every cycle and wins the pot once.`}
+      description={`Currently ${committee.totalSeats} seat${committee.totalSeats === 1 ? "" : "s"} — adding more grows the committee and the pot automatically. A member can hold several; each seat pays ${committee.contributionDisplay} every cycle and wins the pot once.`}
       schema={assignSeatsSchema}
       defaultValues={{ committeeId: committee.id, memberId: "", seatCount: "1" }}
       submitLabel="Assign"
@@ -61,9 +63,9 @@ export function AssignSeatsDialog({ open, onOpenChange, committee, members, seat
               label="Number of seats"
               type="number"
               min={1}
-              max={Math.max(1, seatsOpen)}
+              max={50}
               required
-              hint={`${seatsOpen} free`}
+              hint="No cap — add as many as this member is taking"
             />
 
             {/* Spell out the commitment. Doubling someone's monthly obligation

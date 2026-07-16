@@ -19,7 +19,7 @@ import { DrawDialog } from "./draw-dialog";
 import { verifyDrawAction } from "../actions";
 
 export function DrawsTable({ rows, total, pageSize, committees, can }) {
-  const [drawing, setDrawing] = useState(null);
+  const [drawOpen, setDrawOpen] = useState(false);
   const [verifying, setVerifying] = useState(null);
   const [selectedCommittee, setSelectedCommittee] = useState(committees[0]?.id ?? "");
 
@@ -122,9 +122,7 @@ export function DrawsTable({ rows, total, pageSize, committees, can }) {
       description="When a cycle is fully collected, draw a winner. Every draw commits to a hashed seed beforehand and reveals it after, so anyone can check it was fair."
       action={
         can.run && committees.length > 0 ? (
-          <Button
-            onClick={() => setDrawing(committees.find((c) => c.id === selectedCommittee))}
-          >
+          <Button onClick={() => setDrawOpen(true)}>
             <Dices className="size-4" />
             Run the first draw
           </Button>
@@ -158,10 +156,7 @@ export function DrawsTable({ rows, total, pageSize, committees, can }) {
                 </SelectContent>
               </Select>
 
-              <Button
-                onClick={() => setDrawing(committees.find((c) => c.id === selectedCommittee))}
-                disabled={!selectedCommittee}
-              >
+              <Button onClick={() => setDrawOpen(true)} disabled={!selectedCommittee}>
                 <Dices className="size-4" />
                 Run draw
               </Button>
@@ -171,9 +166,10 @@ export function DrawsTable({ rows, total, pageSize, committees, can }) {
       />
 
       <DrawDialog
-        committee={drawing}
-        open={Boolean(drawing)}
-        onOpenChange={(o) => !o && setDrawing(null)}
+        committees={committees}
+        initialCommitteeId={selectedCommittee}
+        open={drawOpen}
+        onOpenChange={setDrawOpen}
         canOverride={can.override}
       />
     </>

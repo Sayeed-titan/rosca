@@ -5,9 +5,14 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["./tests/setup.js"],
-    // Integration tests hit the real Supabase database; the default 5s is too
-    // tight for a round trip to Singapore.
-    testTimeout: 30_000,
+    // Integration tests hit the real Supabase database; the default 5s is far too
+    // tight for a round trip to Singapore (observed 150-700ms each). A test that
+    // does a full committee lifecycle awaits dozens of sequential round trips
+    // (assign seats, pay every seat for several cycles, draw each cycle), which
+    // can approach 30s under ordinary latency variance with no bug involved — seen
+    // directly: 25/26 draw integration tests passed, the one failure was a
+    // `Test timed out in 30000ms` on the single chattiest test, not a wrong result.
+    testTimeout: 60_000,
     hookTimeout: 60_000,
     include: ["tests/**/*.test.js"],
     // Integration suites create and drop their own org. Running files in parallel

@@ -112,6 +112,9 @@ function PaymentFields({ form, committees }) {
         </p>
       )}
 
+      {/* Say which cycle is being settled and why. The draw runs cycles in order,
+          so paying a later one leaves the next draw blocked — which previously
+          looked like "everyone still owes" for a cycle you'd just paid. */}
       <Field
         form={form}
         name="cycleNumber"
@@ -120,7 +123,13 @@ function PaymentFields({ form, committees }) {
         min={1}
         max={committee?.totalSeats ?? 200}
         required
-        hint={committee ? `1–${committee.totalSeats}` : undefined}
+        hint={
+          committee
+            ? Number(form.watch("cycleNumber")) === committee.nextDrawCycle
+              ? `Cycle ${committee.nextDrawCycle} is next to be drawn`
+              : `⚠ Cycle ${committee.nextDrawCycle} is next to be drawn — this is an advance payment`
+            : undefined
+        }
       />
 
       <Field

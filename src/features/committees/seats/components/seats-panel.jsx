@@ -38,7 +38,10 @@ export function SeatsPanel({ data, members, can }) {
   const [assigning, setAssigning] = useState(false);
   const [removing, setRemoving] = useState(null);
 
-  const { committee, seats, seatsOpen, seatsTaken, uniqueMembers, drawsRun } = data;
+  const { committee, seats, seatsTaken, uniqueMembers, drawsRun } = data;
+  // The roster is flexible right up until the first draw — there is no "full"
+  // state to gate on any more. It locks only once drawing starts, because the pot
+  // size and cycle count are fixed at that point.
   const rosterLocked = drawsRun > 0;
 
   return (
@@ -51,15 +54,15 @@ export function SeatsPanel({ data, members, can }) {
               Seats
             </h2>
             <p className="text-muted-foreground mt-0.5 text-xs">
-              <span className="tabular">{seatsTaken}</span> of{" "}
-              <span className="tabular">{committee.totalSeats}</span> taken by{" "}
+              <span className="tabular">{seatsTaken}</span> seat
+              {seatsTaken === 1 ? "" : "s"} held by{" "}
               <span className="tabular">{uniqueMembers}</span>{" "}
               {uniqueMembers === 1 ? "person" : "people"}
-              {seatsOpen > 0 && ` · ${seatsOpen} free`}
+              {!rosterLocked && " · flexible until the first draw"}
             </p>
           </div>
 
-          {can.assign && seatsOpen > 0 && !rosterLocked && (
+          {can.assign && !rosterLocked && (
             <Button onClick={() => setAssigning(true)}>
               <UserPlus className="size-4" />
               Assign seats
@@ -69,7 +72,8 @@ export function SeatsPanel({ data, members, can }) {
 
         {rosterLocked && (
           <p className="border-border/60 text-muted-foreground border-y px-4 py-2 text-xs">
-            Draws have started, so the roster is locked. Changing it now would alter
+            Draws have started, so the roster is locked at {committee.totalSeats}{" "}
+            seat{committee.totalSeats === 1 ? "" : "s"}. Changing it now would alter
             the pot everyone already paid into.
           </p>
         )}
@@ -192,7 +196,6 @@ export function SeatsPanel({ data, members, can }) {
         onOpenChange={setAssigning}
         committee={committee}
         members={members}
-        seatsOpen={seatsOpen}
       />
 
       <ConfirmDialog

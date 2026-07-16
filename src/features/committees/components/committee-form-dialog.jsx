@@ -34,6 +34,10 @@ const BLANK = {
 
 export function CommitteeFormDialog({ open, onOpenChange, committee }) {
   const isEdit = Boolean(committee);
+  // Once any seat exists, totalSeats is derived from the roster (see
+  // seats/service.js) rather than a number you type — editing it here would only
+  // create drift the server would ignore anyway.
+  const seatsAreDerived = isEdit && (committee?.memberCount ?? 0) > 0;
 
   return (
     <FormDialog
@@ -100,12 +104,17 @@ export function CommitteeFormDialog({ open, onOpenChange, committee }) {
             <Field
               form={form}
               name="totalSeats"
-              label="Total members"
+              label="Total seats"
               type="number"
               min={2}
               max={200}
               required
-              hint="Also the number of cycles — each member wins once"
+              disabled={seatsAreDerived}
+              hint={
+                seatsAreDerived
+                  ? `Set by the roster (${committee.memberCount} assigned) — add or remove seats from the committee page`
+                  : "A starting estimate — grows or shrinks automatically as you assign members, until the first draw"
+              }
             />
 
             <SelectField

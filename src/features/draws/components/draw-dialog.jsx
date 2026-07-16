@@ -25,6 +25,13 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DrawWheel } from "./draw-wheel";
 import { celebrate, playCelebrationSound } from "./celebrate";
 import { previewDrawAction, runDrawAction } from "../actions";
@@ -37,7 +44,14 @@ import { previewDrawAction, runDrawAction } from "../actions";
  * animation and the truth could disagree, and the wheel would be theatre laid over
  * a result the user already half-saw.
  */
-export function DrawDialog({ committee, open, onOpenChange, canOverride }) {
+export function DrawDialog({ committees, initialCommitteeId, open, onOpenChange, canOverride }) {
+  // The committee lives in the dialog's own state, not a fixed prop — so it can
+  // be switched without closing and reopening. Locked once drawing starts: the
+  // draw is already committed server-side by then, and switching mid-spin would
+  // orphan the in-flight result.
+  const [committeeId, setCommitteeId] = useState(initialCommitteeId);
+  const committee = committees.find((c) => c.id === committeeId) ?? null;
+
   const [preview, setPreview] = useState(null);
   const [previewError, setPreviewError] = useState(null);
   const [phase, setPhase] = useState("preview"); // preview | spinning | winner
@@ -46,7 +60,12 @@ export function DrawDialog({ committee, open, onOpenChange, canOverride }) {
   const [reason, setReason] = useState("");
   const [isPending, startTransition] = useTransition();
 
-  // Load the preview whenever the dialog opens.
+  useEffect(() => {
+    if (open) setCommitteeId(initialCommitteeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Load the preview whenever the dialog opens OR the committee changes.
   useEffect(() => {
     if (!open || !committee) return;
 
@@ -112,6 +131,23 @@ export function DrawDialog({ committee, open, onOpenChange, canOverride }) {
             {preview ? ` · Cycle ${preview.cycleNumber}` : ""}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Switching committee is only meaningful before drawing — once spinning
+            or won, the draw is already committed server-side. */}
+        {phase === "preview" && committees.length > 1 && (
+          <Select value={committeeId} onValueChange={setCommitteeId}>
+            <SelectTrigger className="h-8 w-full" aria-label="Committee to draw">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {committees.map((c) => (
+                <SelectItem key={c.id} value={c.id}>
+                  {c.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {previewError && (
           <div

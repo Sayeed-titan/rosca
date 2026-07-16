@@ -119,17 +119,18 @@ function analyse(committee, seats, draws, payments, now) {
   if (seats.length === 0) {
     return err(ErrorCode.DRAW_NO_ELIGIBLE_MEMBERS, "No members are assigned yet.");
   }
-  if (seats.length !== committee.totalSeats) {
-    return err(
-      ErrorCode.CONFLICT,
-      `The roster isn't full: ${seats.length} of ${committee.totalSeats} seats are taken. Everyone must be in before the first draw, or the pot and the schedule won't add up.`
-    );
-  }
+
+  // The roster no longer has to "fill up to a declared cap" before the first draw
+  // — see seats/service.js. seats.length IS the number of cycles this committee
+  // will run; committee.totalSeats is kept in sync with it up to the first draw
+  // and frozen from then on, so using the live count here (rather than trusting
+  // the column) is correct in both states and immune to any historical drift.
+  const totalSeats = seats.length;
 
   const wonIds = new Set(draws.map((d) => d.winnerCommitteeMemberId));
   const cycleNumber = draws.length + 1;
 
-  if (cycleNumber > committee.totalSeats) {
+  if (cycleNumber > totalSeats) {
     return err(ErrorCode.CONFLICT, "Every cycle has already been drawn.");
   }
 
@@ -155,7 +156,7 @@ function analyse(committee, seats, draws, payments, now) {
     now
   );
 
-  const payoutMinor = potForCycle(committee.contributionMinor, committee.totalSeats);
+  const payoutMinor = potForCycle(committee.contributionMinor, totalSeats);
 
   return ok({
     committee,
@@ -196,6 +197,26 @@ export async function runDraw(db, actor, input, now = new Date()) {
       if (!collection.complete) {
         if (!input.override) {
           const names = collection.shortfalls.map((s) => s.memberName).join(", ");
+
+          // If NOBODY has paid this cycle but money exists elsewhere, the organiser
+          // has almost certainly paid the wrong cycle — say so, instead of listing
+          // every member as a debtor for a cycle they think they just settled.
+          const paidElsewhere = payments.some((p) => p.cycleNumber !== cycleNumber);
+          const noneForThisCycle = collection.shortfalls.length === seats.length;
+
+          if (paidElsewhere && noneForThisCycle) {
+            const cyclesWithMoney = [
+              ...new Set(payments.map((p) => p.cycleNumber)),
+            ].sort((a, b) => a - b);
+
+            throw new DrawError(
+              ErrorCode.DRAW_INCOMPLETE_PAYMENTS,
+              `Draws run in order, so cycle ${cycleNumber} is next — but nothing has been collected for it. ` +
+                `Payments exist for cycle ${cyclesWithMoney.join(", ")} instead. ` +
+                `Record cycle ${cycleNumber}'s payments first, or reverse the others if they were filed against the wrong cycle.`
+            );
+          }
+
           throw new DrawError(
             ErrorCode.DRAW_INCOMPLETE_PAYMENTS,
             `Cycle ${cycleNumber} isn't fully collected yet. Still owing: ${names}. Nobody should take the pot while others are still paying into it.`

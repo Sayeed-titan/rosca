@@ -43,6 +43,7 @@ const TENANT_MODELS = new Set([
   "Notification",
   "AuditLog",
   "Setting",
+  "MemberPaymentAccount",
 ]);
 
 /**

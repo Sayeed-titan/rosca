@@ -95,3 +95,8 @@ export async function countDraws(db, committeeId) {
 export async function countPayments(db, committeeId) {
   return db.payment.count({ where: { committeeId } });
 }
+
+/** Active seats right now — the value totalSeats must always agree with pre-draw. */
+export async function countSeats(db, committeeId) {
+  return db.committeeMember.count({ where: { committeeId, deletedAt: null } });
+}

@@ -185,6 +185,203 @@ export async function recordPayment(db, actor, input) {
 }
 
 /**
+ * Record payments for many seats — and optionally many cycles per seat — in one
+ * submission. This is the table on the Payments page: an organiser checks a batch
+ * of seats and hits submit once, instead of opening the single-payment dialog
+ * over and over.
+ *
+ * One committee lookup, one shared paidAt/method, then a Payment + Receipt +
+ * ledger movement per (seat, cycle) pair — all in ONE transaction. Every row is
+ * validated before anything is written: a bad seat id anywhere in the batch rolls
+ * the whole thing back rather than leaving a half-recorded batch, which would be
+ * far more confusing to untangle than a single rejected submission.
+ *
+ * Late fee overrides are deliberately NOT supported here — waiving a fee is an
+ * exception, not a batch operation, so it stays on the single-payment dialog
+ * where it gets the attention (and the explicit audit note) it needs.
+ */
+export async function recordBulkPayments(db, actor, { committeeId, paidAt, method, entries }) {
+  const committee = await db.committee.findUnique({
+    where: { id: committeeId },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      deletedAt: true,
+      contributionMinor: true,
+      currency: true,
+      currencyExponent: true,
+      totalSeats: true,
+      startDate: true,
+      drawFrequency: true,
+      drawDay: true,
+      gracePeriodDays: true,
+      lateFeeType: true,
+      lateFeeFlatMinor: true,
+      lateFeePercentBps: true,
+    },
+  });
+
+  if (!committee || committee.deletedAt) {
+    return err(ErrorCode.NOT_FOUND, "That committee no longer exists.");
+  }
+  if (committee.status === "CANCELLED" || committee.status === "COMPLETED") {
+    return err(
+      ErrorCode.CONFLICT,
+      `“${committee.name}” is ${committee.status.toLowerCase()} — no further payments can be recorded.`
+    );
+  }
+
+  const seatIds = entries.map((e) => e.committeeMemberId);
+  const seatRows = await db.committeeMember.findMany({
+    where: { id: { in: seatIds }, committeeId, deletedAt: null },
+    select: { id: true, member: { select: { id: true, fullName: true } } },
+  });
+  const seatById = new Map(seatRows.map((s) => [s.id, s]));
+
+  // Validate every row up front. Both id-typos and stale-roster races (a seat
+  // removed by someone else between page load and submit) land here as the same
+  // honest error, before anything is written.
+  for (const entry of entries) {
+    const seat = seatById.get(entry.committeeMemberId);
+    if (!seat) {
+      return err(
+        ErrorCode.VALIDATION,
+        "One of the selected members isn't in this committee any more. Refresh and try again."
+      );
+    }
+    const lastCycle = entry.startCycle + entry.cycleCount - 1;
+    if (lastCycle > committee.totalSeats) {
+      return err(
+        ErrorCode.VALIDATION,
+        `${seat.member.fullName}: this committee only runs ${committee.totalSeats} cycle${committee.totalSeats === 1 ? "" : "s"}, but this entry reaches cycle ${lastCycle}.`
+      );
+    }
+  }
+
+  const created = await db.$transaction(async (tx) => {
+    const rows = [];
+
+    // Sequential, not Promise.all: nextReceiptNumber counts existing receipts to
+    // pick the next number, and two concurrent counts inside the same
+    // transaction could both read the same count before either insert commits —
+    // a real, not hypothetical, way to hand out a duplicate receipt number.
+    for (const entry of entries) {
+      const seat = seatById.get(entry.committeeMemberId);
+
+      for (let i = 0; i < entry.cycleCount; i++) {
+        const cycleNumber = entry.startCycle + i;
+
+        const late = isLate(committee, cycleNumber, paidAt);
+        const lateFeeMinor = late
+          ? calculateLateFee(committee, committee.contributionMinor)
+          : 0n;
+
+        const payment = await repo.createPayment(tx, {
+          committeeId: committee.id,
+          committeeMemberId: seat.id,
+          cycleNumber,
+          amountMinor: entry.amountPerCycleMinor,
+          lateFeeMinor,
+          kind: "CONTRIBUTION",
+          paidAt,
+          method,
+          referenceNumber: entry.referenceNumber,
+          recordedByUserId: actor.userId,
+        });
+
+        await repo.createTransaction(tx, {
+          committeeId: committee.id,
+          type: "CONTRIBUTION_IN",
+          amountMinor: entry.amountPerCycleMinor,
+          paymentId: payment.id,
+          occurredAt: paidAt,
+          description: `Cycle ${cycleNumber} — ${seat.member.fullName}`,
+        });
+
+        if (lateFeeMinor > 0n) {
+          await repo.createTransaction(tx, {
+            committeeId: committee.id,
+            type: "LATE_FEE_IN",
+            amountMinor: lateFeeMinor,
+            paymentId: payment.id,
+            occurredAt: paidAt,
+            description: `Late fee — cycle ${cycleNumber}`,
+          });
+        }
+
+        const receiptNumber = await repo.nextReceiptNumber(tx);
+        await repo.createReceipt(tx, {
+          paymentId: payment.id,
+          receiptNumber,
+          snapshot: {
+            receiptNumber,
+            issuedAt: new Date().toISOString(),
+            committeeName: committee.name,
+            memberName: seat.member.fullName,
+            cycleNumber,
+            amount: formatMoney(
+              entry.amountPerCycleMinor,
+              committee.currency,
+              committee.currencyExponent
+            ),
+            lateFee: formatMoney(lateFeeMinor, committee.currency, committee.currencyExponent),
+            total: formatMoney(
+              entry.amountPerCycleMinor + lateFeeMinor,
+              committee.currency,
+              committee.currencyExponent
+            ),
+            method,
+            referenceNumber: entry.referenceNumber,
+            paidAt: paidAt.toISOString(),
+            recordedBy: actor.name ?? actor.email,
+          },
+        });
+
+        rows.push({
+          paymentId: payment.id,
+          cycleNumber,
+          memberName: seat.member.fullName,
+          amountMinor: entry.amountPerCycleMinor,
+          lateFeeMinor,
+        });
+      }
+    }
+
+    await writeAudit(tx, {
+      action: AuditAction.PAYMENT_BULK_CREATE,
+      actorUserId: actor.userId,
+      entityType: "Committee",
+      entityId: committee.id,
+      after: {
+        committeeName: committee.name,
+        paymentCount: rows.length,
+        totalMinor: rows.reduce((sum, r) => sum + r.amountMinor, 0n).toString(),
+        cycles: [...new Set(rows.map((r) => r.cycleNumber))].sort((a, b) => a - b),
+      },
+    });
+
+    return rows;
+  }, {
+    // A batch can be many (seat x cycle) pairs, each several sequential round
+    // trips — Prisma's default interactive-transaction timeout is 5s, which a
+    // real batch against a remote database blows past well before anything is
+    // wrong. 60s covers a large batch with room to spare; the transaction still
+    // fails closed (all-or-nothing) if it's ever exceeded.
+    timeout: 60_000,
+    maxWait: 10_000,
+  });
+
+  const totalMinor = created.reduce((sum, r) => sum + r.amountMinor + r.lateFeeMinor, 0n);
+
+  return ok({
+    count: created.length,
+    totalDisplay: formatMoney(totalMinor, committee.currency, committee.currencyExponent),
+    seatsCovered: new Set(created.map((r) => r.memberName)).size,
+  });
+}
+
+/**
  * Reverse a payment.
  *
  * Appends an equal-and-opposite row rather than touching the original. The signed

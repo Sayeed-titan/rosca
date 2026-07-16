@@ -97,6 +97,12 @@ export const committeeUpdateSchema = withRules(
   committeeBase.extend({ id: z.string().min(1) })
 );
 
+/** A quick status-only change — doesn't need the whole edit form's fields. */
+export const committeeStatusSchema = z.object({
+  id: z.string().min(1),
+  status: z.enum(COMMITTEE_STATUSES),
+});
+
 /** Query params for the committees list. */
 export const committeeListSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

@@ -5,15 +5,21 @@ import {
   TriangleAlert,
   Dices,
   CalendarClock,
-  CircleCheckBig,
   Activity,
+  Plus,
 } from "lucide-react";
+import Link from "next/link";
 
 import { requireOrgActor } from "@/core/auth/session";
+import { forOrganization } from "@/core/db/tenant";
+import { getResolvedCurrentCommittee } from "@/core/current-committee";
 import { getDashboardStats } from "@/features/dashboard/service";
 import { StatCard } from "@/features/dashboard/components/stat-card";
 import { formatMoney } from "@/core/money";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/common/empty-state";
 
 export const metadata = { title: "Dashboard" };
 
@@ -28,6 +34,7 @@ const ACTION_LABEL = {
   "member.update": "updated a member",
   "committee.create": "created a committee",
   "payment.create": "recorded a payment",
+  "payment.bulk_create": "recorded a batch of payments",
   "payment.reverse": "reversed a payment",
   "draw.run": "ran a draw",
   "draw.override": "overrode a draw",
@@ -46,18 +53,52 @@ function formatWhen(iso) {
 
 export default async function DashboardPage() {
   const actor = await requireOrgActor();
-  const stats = await getDashboardStats(actor.organizationId);
+  const db = forOrganization(actor.organizationId);
+  const { committees, current } = await getResolvedCurrentCommittee(db);
 
+  if (!current) {
+    return (
+      <div className="space-y-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground text-sm">
+            {actor.name ? `Welcome back, ${actor.name.split(" ")[0]}.` : "Welcome back."}
+          </p>
+        </header>
+        <Card className="glass rounded-xl border-0 p-0">
+          <EmptyState
+            icon={Landmark}
+            title="No committees yet"
+            description="Create your first committee to start collecting and see it here."
+            action={
+              <Button render={<Link href="/committees" />}>
+                <Plus className="size-4" />
+                Create a committee
+              </Button>
+            }
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  const stats = await getDashboardStats(actor.organizationId, current.id);
   const money = (minor) => formatMoney(minor, stats.currency, stats.exponent);
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">
-          {actor.name ? `Welcome back, ${actor.name.split(" ")[0]}.` : "Welcome back."}{" "}
-          Here&apos;s where your committees stand.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground text-sm">
+            {actor.name ? `Welcome back, ${actor.name.split(" ")[0]}.` : "Welcome back."}{" "}
+            Showing <span className="text-foreground font-medium">{stats.committeeName}</span>.
+            {committees.length > 1 && " Switch committees from the sidebar."}
+          </p>
+        </div>
+        <Badge variant={stats.committeeStatus === "ACTIVE" ? "secondary" : "outline"}>
+          {stats.committeeStatus.charAt(0) + stats.committeeStatus.slice(1).toLowerCase()}
+        </Badge>
       </header>
 
       <section
@@ -65,23 +106,16 @@ export default async function DashboardPage() {
         className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
       >
         <StatCard
-          icon={Landmark}
-          label="Committees"
-          value={stats.totalCommittees}
-          hint={`${stats.activeCommittees} active`}
-          tone="brand"
-        />
-        <StatCard
           icon={Users}
-          label="Active members"
-          value={stats.activeMembers}
-          hint="Across all committees"
+          label="Members"
+          value={stats.uniqueMembers}
+          hint={`${stats.seatCount} seat${stats.seatCount === 1 ? "" : "s"}`}
         />
         <StatCard
           icon={Wallet}
           label="Money collected"
           value={money(stats.collectedMinor)}
-          hint="Net of reversals"
+          hint="Net of reversals, this committee"
           tone="success"
         />
         <StatCard
@@ -91,24 +125,19 @@ export default async function DashboardPage() {
           hint="Due to date, not yet received"
           tone={stats.outstandingMinor === "0" ? "muted" : "warning"}
         />
-
         <StatCard
           icon={CalendarClock}
-          label="Per-cycle target"
-          value={money(stats.perCycleTargetMinor)}
-          hint="Full pot across active committees"
+          label="Pot per cycle"
+          value={stats.potDisplay}
+          hint={`${stats.seatCount} seats × contribution`}
+          tone="brand"
         />
+
         <StatCard
           icon={Dices}
           label="Draws run"
           value={stats.drawsRun}
-          hint="All verifiable from their seed"
-        />
-        <StatCard
-          icon={CircleCheckBig}
-          label="Completed"
-          value={stats.completedCommittees}
-          hint="Every member paid out"
+          hint={`${stats.cyclesRemaining} cycle${stats.cyclesRemaining === 1 ? "" : "s"} remaining`}
         />
         <StatCard
           icon={CalendarClock}
@@ -121,12 +150,14 @@ export default async function DashboardPage() {
                 })
               : "—"
           }
-          hint={
-            stats.upcoming
-              ? `${stats.upcoming.committeeName} · cycle ${stats.upcoming.cycleNumber}`
-              : "Nothing scheduled"
-          }
+          hint={stats.upcoming ? `Cycle ${stats.upcoming.cycleNumber}` : "Nothing scheduled"}
           tone={stats.upcoming ? "brand" : "muted"}
+        />
+        <StatCard
+          icon={Landmark}
+          label="Committees"
+          value={committees.length}
+          hint="In your organization"
         />
       </section>
 
@@ -135,6 +166,7 @@ export default async function DashboardPage() {
           <div className="mb-4 flex items-center gap-2">
             <Activity className="text-muted-foreground size-4" aria-hidden="true" />
             <h2 className="text-sm font-medium">Recent activity</h2>
+            <span className="text-muted-foreground text-xs">— organization-wide</span>
           </div>
 
           {stats.recentActivity.length === 0 ? (

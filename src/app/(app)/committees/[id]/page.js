@@ -8,9 +8,11 @@ import { Permission } from "@/core/auth/permissions";
 import { forOrganization } from "@/core/db/tenant";
 import { ForbiddenState } from "@/components/common/forbidden-state";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import * as seatService from "@/features/committees/seats/service";
+import * as committeeService from "@/features/committees/service";
 import { SeatsPanel } from "@/features/committees/seats/components/seats-panel";
+import { QuickStatusSelect } from "@/features/committees/components/quick-status-select";
+import { CommitteeDetailActions } from "@/features/committees/components/committee-detail-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -36,10 +38,19 @@ export default async function CommitteeDetailPage({ params }) {
   const { id } = await params;
   const db = forOrganization(actor.organizationId);
 
-  const result = await seatService.listSeats(db, id);
+  const [result, fullCommitteeResult] = await Promise.all([
+    seatService.listSeats(db, id),
+    // The Seats panel only needs a trimmed committee shape (name, pot, etc), but
+    // the edit dialog needs the FULL DTO — same fields toCommitteeFormValues
+    // expects. Fetching both here rather than reusing the trimmed one for edit,
+    // which would silently render a form full of blank fields.
+    committeeService.getCommittee(db, id),
+  ]);
   if (!result.ok) notFound();
 
   const { committee } = result.data;
+  const fullCommittee = fullCommitteeResult.ok ? fullCommitteeResult.data : null;
+  const canUpdate = can(actor, Permission.COMMITTEE_UPDATE);
 
   // Members available to assign, with how many seats they already hold — so the
   // dialog can warn before doubling someone's monthly obligation.
@@ -78,9 +89,11 @@ export default async function CommitteeDetailPage({ params }) {
           <div className="space-y-1">
             <div className="flex items-center gap-2.5">
               <h1 className="text-2xl font-semibold tracking-tight">{committee.name}</h1>
-              <Badge variant={committee.status === "ACTIVE" ? "secondary" : "outline"}>
-                {committee.status.charAt(0) + committee.status.slice(1).toLowerCase()}
-              </Badge>
+              <QuickStatusSelect
+                committeeId={committee.id}
+                status={committee.status}
+                canEdit={canUpdate}
+              />
             </div>
             {committee.description && (
               <p className="text-muted-foreground text-sm text-pretty">
@@ -89,22 +102,31 @@ export default async function CommitteeDetailPage({ params }) {
             )}
           </div>
 
-          <dl className="flex gap-6 text-sm">
-            <div>
-              <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                Per seat
-              </dt>
-              <dd className="tabular font-semibold">{committee.contributionDisplay}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground text-xs uppercase tracking-wide">
-                Pot / cycle
-              </dt>
-              <dd className="brand-text-gradient tabular font-semibold">
-                {committee.potDisplay}
-              </dd>
-            </div>
-          </dl>
+          <div className="flex items-center gap-4">
+            <dl className="flex gap-6 text-sm">
+              <div>
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">
+                  Per seat
+                </dt>
+                <dd className="tabular font-semibold">{committee.contributionDisplay}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground text-xs uppercase tracking-wide">
+                  Pot / cycle
+                </dt>
+                <dd className="brand-text-gradient tabular font-semibold">
+                  {committee.potDisplay}
+                </dd>
+              </div>
+            </dl>
+
+            {canUpdate && fullCommittee && (
+              <CommitteeDetailActions
+                committee={fullCommittee}
+                canDelete={can(actor, Permission.COMMITTEE_DELETE)}
+              />
+            )}
+          </div>
         </div>
       </div>
 

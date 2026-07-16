@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "./theme-toggle";
+import { CommitteeSwitcher } from "./committee-switcher";
 import { NAV_ITEMS } from "./nav-items";
 import { logoutAction } from "@/features/auth/actions";
 
@@ -36,7 +37,7 @@ function initials(name, email) {
  *
  * Filtering is cosmetic: the service layer is what actually refuses.
  */
-export function AppShell({ actor, allowedHrefs, children }) {
+export function AppShell({ actor, allowedHrefs, committees, currentCommitteeId, children }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -105,6 +106,8 @@ export function AppShell({ actor, allowedHrefs, children }) {
           <p className="truncate text-sm font-medium">{org.name}</p>
         </div>
       )}
+
+      <CommitteeSwitcher committees={committees} selectedId={currentCommitteeId} />
 
       <Separator className="my-5" />
       {nav}

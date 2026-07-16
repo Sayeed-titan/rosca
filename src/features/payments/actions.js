@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 
 import { withPermission } from "@/core/auth/action";
 import { Permission } from "@/core/auth/permissions";
-import { paymentSchema, reversalSchema, normalizePaymentInput } from "./schema";
+import {
+  paymentSchema,
+  reversalSchema,
+  bulkPaymentSchema,
+  normalizePaymentInput,
+  normalizeBulkPaymentInput,
+} from "./schema";
 import * as service from "./service";
 import { err } from "@/core/result";
 import { ErrorCode } from "@/core/errors";
@@ -25,6 +31,27 @@ export const recordPaymentAction = withPermission(
       db,
       actor,
       normalizePaymentInput(parsed.data)
+    );
+
+    if (result.ok) {
+      revalidatePath("/payments");
+      revalidatePath("/dashboard");
+      revalidatePath("/committees");
+    }
+    return result;
+  }
+);
+
+export const recordBulkPaymentsAction = withPermission(
+  Permission.PAYMENT_CREATE,
+  async ({ actor, db }, input) => {
+    const parsed = bulkPaymentSchema.safeParse(input);
+    if (!parsed.success) return invalid(parsed);
+
+    const result = await service.recordBulkPayments(
+      db,
+      actor,
+      normalizeBulkPaymentInput(parsed.data)
     );
 
     if (result.ok) {

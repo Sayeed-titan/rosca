@@ -83,6 +83,59 @@ export function normalizePaymentInput(values) {
   };
 }
 
+/**
+ * Bulk payment entry — the table on the Payments page.
+ *
+ * One submission can cover many seats at once, and each row can itself cover
+ * several consecutive cycles (an advance payment — someone paying 3 months in
+ * one go). `startCycle`/`cycleCount` express that: cycles startCycle .. startCycle
+ * + cycleCount - 1 each get their own Payment + Receipt row, so the ledger and the
+ * printed receipts stay per-cycle even though the organiser only entered it once.
+ */
+export const bulkPaymentEntrySchema = z.object({
+  committeeMemberId: z.string().min(1),
+  startCycle: z.coerce.number().int().min(1).max(400),
+  cycleCount: z.coerce
+    .number()
+    .int()
+    .min(1, { message: "At least 1 cycle" })
+    .max(24, { message: "24 cycles is the maximum in one entry" }),
+  amountPerCycle: z
+    .string()
+    .trim()
+    .min(1, { message: "Amount is required" })
+    .regex(AMOUNT_RE, { message: "Enter an amount like 5000" }),
+  referenceNumber: z.string().trim().max(80).optional(),
+});
+
+export const bulkPaymentSchema = z.object({
+  committeeId: z.string().min(1),
+  paidAt: z
+    .string()
+    .min(1, { message: "Payment date is required" })
+    .refine((v) => !Number.isNaN(Date.parse(v)), { message: "Invalid date" }),
+  method: z.enum(PAYMENT_METHODS),
+  entries: z
+    .array(bulkPaymentEntrySchema)
+    .min(1, { message: "Select at least one seat to record a payment for" }),
+});
+
+/** Validated bulk form values -> database shape. Server-side, once. */
+export function normalizeBulkPaymentInput(values) {
+  return {
+    committeeId: values.committeeId,
+    paidAt: new Date(values.paidAt),
+    method: values.method,
+    entries: values.entries.map((e) => ({
+      committeeMemberId: e.committeeMemberId,
+      startCycle: e.startCycle,
+      cycleCount: e.cycleCount,
+      amountPerCycleMinor: toMinor(e.amountPerCycle, 2),
+      referenceNumber: e.referenceNumber?.trim() || null,
+    })),
+  };
+}
+
 export const paymentListSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(10),

@@ -48,12 +48,13 @@ model Organization {
   committees       Committee[]
   committeeMembers CommitteeMember[]
   payments         Payment[]
-  draws         Draw[]
-  transactions  Transaction[]
-  receipts      Receipt[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
-  settings      Setting[]
+  draws            Draw[]
+  transactions     Transaction[]
+  receipts         Receipt[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  settings         Setting[]
+  paymentAccounts  MemberPaymentAccount[]
 
   @@index([deletedAt])
 }
@@ -181,10 +182,11 @@ model Member {
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user             User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user             User?                   @relation(fields: [userId], references: [id], onDelete: SetNull)
   committeeMembers CommitteeMember[]
   notifications    Notification[]
+  paymentAccounts  MemberPaymentAccount[]
 
   @@unique([organizationId, nationalId])
   @@index([organizationId, deletedAt])
@@ -197,6 +199,40 @@ enum MemberStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+/// A saved payment channel for a Member — an MFS number (bKash/Nagad/Rocket), a
+/// bank account, etc. Purely a convenience lookup: recording a payment can pull
+/// the reference number from here instead of it being retyped every cycle.
+///
+/// Not financial history itself — Payment.referenceNumber is copied at the time of
+/// payment and stays frozen even if this record is later edited or removed. Real
+/// delete is fine here (unlike Payment), because removing a saved number doesn't
+/// erase anything that happened.
+model MemberPaymentAccount {
+  id             String @id @default(cuid())
+  organizationId String
+  memberId       String
+
+  method        PaymentMethod
+  /// The number/identifier — a phone number for MFS, an account number for BANK.
+  accountNumber String
+  /// Optional human label ("Personal bKash", "Business a/c") to tell several
+  /// accounts of the same method apart.
+  label String?
+
+  /// At most one default per (memberId, method) — enforced in the service layer;
+  /// see assignSeats-style transaction pattern in payment-accounts/service.js.
+  isDefault Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member       Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([memberId, method])
 }
 
 /// One ROSCA. `totalSeats` cycles; each cycle collects `contributionMinor` from

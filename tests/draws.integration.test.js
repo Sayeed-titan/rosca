@@ -323,3 +323,68 @@ describe("roster rules", () => {
     expect(r.error.message).toContain("No members are assigned");
   });
 });
+
+describe("the payment cycle and the draw cycle must agree", () => {
+  it("tells you plainly when payments went to the wrong cycle", async () => {
+    // The exact bug an organiser hit: the payment form suggested the CALENDAR cycle
+    // (committee started in January, so "cycle 8"), while the draw runs cycles in
+    // order and wanted cycle 1. Every member was paid, and the draw still refused —
+    // reporting all 8 as "still owing" for a cycle that had just been settled.
+    const { committee, seats } = await makeCommittee("WrongCycle", 3);
+
+    // Pay everyone — but for cycle 3 instead of cycle 1.
+    for (const seat of seats) {
+      await payments.recordPayment(db, owner, {
+        committeeId: committee.id,
+        committeeMemberId: seat.id,
+        cycleNumber: 3,
+        amountMinor: toMinor("1000"),
+        paidAt: new Date("2026-03-05T09:00:00Z"),
+        method: "CASH",
+        referenceNumber: null,
+        notes: null,
+        lateFeeOverrideMinor: null,
+      });
+    }
+
+    const r = await draws.runDraw(db, owner, { committeeId: committee.id });
+
+    expect(r.ok).toBe(false);
+    expect(r.error.code).toBe("draw.incomplete_payments");
+
+    // The message must diagnose it, not just list debtors.
+    expect(r.error.message).toContain("cycle 1 is next");
+    expect(r.error.message).toContain("cycle 3");
+    // And must NOT claim the people who just paid are the problem.
+    expect(r.error.message).not.toContain("Member 1,");
+  });
+
+  it("draws once the RIGHT cycle is collected, leaving the advance payment intact", async () => {
+    const { committee, seats } = await makeCommittee("RightCycle", 3);
+
+    // An advance payment for cycle 2 is legitimate — it just isn't cycle 1.
+    await payments.recordPayment(db, owner, {
+      committeeId: committee.id,
+      committeeMemberId: seats[0].id,
+      cycleNumber: 2,
+      amountMinor: toMinor("1000"),
+      paidAt: new Date("2026-02-05T09:00:00Z"),
+      method: "CASH",
+      referenceNumber: null,
+      notes: null,
+      lateFeeOverrideMinor: null,
+    });
+
+    await payCycle(committee, seats, 1);
+
+    const r = await draws.runDraw(db, owner, { committeeId: committee.id });
+    expect(r.ok).toBe(true);
+    expect(r.data.cycleNumber).toBe(1);
+
+    // The advance is still on record and still counts toward cycle 2.
+    const advance = await prisma.payment.count({
+      where: { committeeId: committee.id, cycleNumber: 2 },
+    });
+    expect(advance).toBe(1);
+  });
+});

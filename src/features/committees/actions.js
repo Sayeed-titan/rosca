@@ -7,6 +7,7 @@ import { Permission } from "@/core/auth/permissions";
 import {
   committeeSchema,
   committeeUpdateSchema,
+  committeeStatusSchema,
   normalizeCommitteeInput,
 } from "./schema";
 import * as service from "./service";
@@ -49,6 +50,23 @@ export const updateCommitteeAction = withPermission(
       normalizeCommitteeInput(values)
     );
     if (result.ok) revalidatePath("/committees");
+    return result;
+  }
+);
+
+export const setCommitteeStatusAction = withPermission(
+  Permission.COMMITTEE_UPDATE,
+  async ({ actor, db }, input) => {
+    const parsed = committeeStatusSchema.safeParse(input);
+    if (!parsed.success) return invalid(parsed);
+
+    const result = await service.setCommitteeStatus(db, actor, parsed.data.id, parsed.data.status);
+    if (result.ok) {
+      revalidatePath("/committees");
+      revalidatePath(`/committees/${parsed.data.id}`);
+      revalidatePath("/dashboard");
+      revalidatePath("/draws");
+    }
     return result;
   }
 );

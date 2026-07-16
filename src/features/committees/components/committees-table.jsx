@@ -8,7 +8,6 @@ import { DataTable } from "@/components/common/data-table";
 import { EmptyState } from "@/components/common/empty-state";
 import { ConfirmDialog } from "@/components/common/confirm-dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,14 +16,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useTableParams } from "@/hooks/use-table-params";
 import { CommitteeFormDialog } from "./committee-form-dialog";
+import { QuickStatusSelect } from "./quick-status-select";
 import { deleteCommitteeAction } from "../actions";
-
-const STATUS_VARIANT = {
-  ACTIVE: "secondary",
-  DRAFT: "outline",
-  COMPLETED: "secondary",
-  CANCELLED: "destructive",
-};
+import { setCurrentCommitteeAction } from "../switcher/actions";
 
 const title = (s) => s.charAt(0) + s.slice(1).toLowerCase();
 
@@ -93,9 +87,15 @@ export function CommitteesTable({ rows, total, pageSize, can }) {
       header: "Status",
       sortable: true,
       cell: (row) => (
-        <Badge variant={STATUS_VARIANT[row.status] ?? "outline"}>
-          {title(row.status)}
-        </Badge>
+        // Stops the row's own onRowClick (navigate to detail) from firing when
+        // someone's just trying to flip the status right here in the list.
+        <div onClick={(e) => e.stopPropagation()}>
+          <QuickStatusSelect
+            committeeId={row.id}
+            status={row.status}
+            canEdit={can.update}
+          />
+        </div>
       ),
     },
     {
@@ -163,7 +163,12 @@ export function CommitteesTable({ rows, total, pageSize, can }) {
         searchPlaceholder="Search committees…"
         empty={empty}
         // The row is the way into the roster — that's where seats get assigned.
-        onRowClick={(row) => router.push(`/committees/${row.id}`)}
+        onRowClick={(row) => {
+          // Opening a committee also makes it the org-wide selection, so
+          // Dashboard/Payments/Draws already show it when you navigate there.
+          setCurrentCommitteeAction(row.id);
+          router.push(`/committees/${row.id}`);
+        }}
         toolbar={
           can.create ? (
             <Button className="ml-auto" onClick={() => setCreating(true)}>

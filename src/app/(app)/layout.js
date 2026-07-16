@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 
 import { getActor } from "@/core/auth/session";
 import { can } from "@/core/auth/rbac";
+import { forOrganization } from "@/core/db/tenant";
+import { getResolvedCurrentCommittee } from "@/core/current-committee";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { AppShell } from "@/components/layout/app-shell";
 
@@ -37,8 +39,16 @@ export default async function AppLayout({ children }) {
     memberships: actor.memberships,
   };
 
+  const db = forOrganization(actor.organizationId);
+  const { committees, current } = await getResolvedCurrentCommittee(db);
+
   return (
-    <AppShell actor={actorForClient} allowedHrefs={allowedHrefs}>
+    <AppShell
+      actor={actorForClient}
+      allowedHrefs={allowedHrefs}
+      committees={committees}
+      currentCommitteeId={current?.id ?? null}
+    >
       {children}
     </AppShell>
   );

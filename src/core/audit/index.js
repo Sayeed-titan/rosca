@@ -24,6 +24,8 @@ export const AuditAction = {
   MEMBER_CREATE: "member.create",
   MEMBER_UPDATE: "member.update",
   MEMBER_DELETE: "member.delete",
+  MEMBER_PAYMENT_ACCOUNT_SAVE: "member.payment_account_save",
+  MEMBER_PAYMENT_ACCOUNT_REMOVE: "member.payment_account_remove",
 
   COMMITTEE_CREATE: "committee.create",
   COMMITTEE_UPDATE: "committee.update",
@@ -31,6 +33,7 @@ export const AuditAction = {
   COMMITTEE_ASSIGN_MEMBER: "committee.assign_member",
 
   PAYMENT_CREATE: "payment.create",
+  PAYMENT_BULK_CREATE: "payment.bulk_create",
   PAYMENT_REVERSE: "payment.reverse",
   RECEIPT_ISSUE: "receipt.issue",
 
