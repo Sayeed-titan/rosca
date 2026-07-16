@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getActor } from "@/core/auth/session";
+import { landingPathFor } from "@/core/auth/landing";
 
 /**
  * The root is just a router: there is no marketing site here, and an empty landing
@@ -8,5 +9,5 @@ import { getActor } from "@/core/auth/session";
  */
 export default async function Home() {
   const actor = await getActor();
-  redirect(actor ? "/dashboard" : "/login");
+  redirect(actor ? landingPathFor(actor) : "/login");
 }

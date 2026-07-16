@@ -3,6 +3,8 @@
 import { AuthError } from "next-auth";
 
 import { signIn, signOut } from "@/core/auth";
+import { getActor } from "@/core/auth/session";
+import { landingPathFor } from "@/core/auth/landing";
 import { loginSchema, signupSchema } from "./schema";
 import { registerOwner } from "./signup-service";
 import { ok, err } from "@/core/result";
@@ -43,7 +45,10 @@ export async function loginAction(input) {
     throw error;
   }
 
-  return ok({ redirectTo: "/dashboard" });
+  // Read the session back rather than assuming /dashboard: a MEMBER has no
+  // ORG_VIEW and would land on a "no access" wall the moment they signed in.
+  const actor = await getActor();
+  return ok({ redirectTo: landingPathFor(actor) });
 }
 
 /**

@@ -8,6 +8,7 @@ import {
   ScrollText,
   Settings,
   CalendarDays,
+  UserRound,
 } from "lucide-react";
 
 import { Permission } from "@/core/auth/permissions";
@@ -28,6 +29,14 @@ export const NAV_ITEMS = [
     label: "Dashboard",
     icon: LayoutDashboard,
     permission: Permission.ORG_VIEW,
+  },
+  {
+    // Everyone's own view. SELF_VIEW is the one permission a MEMBER has, so this
+    // is the only nav item they see besides the read-only pages.
+    href: "/portal",
+    label: "My committees",
+    icon: UserRound,
+    permission: Permission.SELF_VIEW,
   },
   {
     href: "/committees",
