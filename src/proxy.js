@@ -19,6 +19,7 @@ import { NextResponse } from "next/server";
 /** Reachable while signed out. */
 const PUBLIC_PREFIXES = [
   "/login",
+  "/signup", // registration must be reachable by definition — nobody has a session yet
   "/api/auth", // Auth.js endpoints must stay open or sign-in cannot happen
   "/api/health",
 ];

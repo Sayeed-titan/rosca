@@ -104,29 +104,35 @@ export function CommitteesTable({ rows, total, pageSize, can }) {
       headClassName: "w-12",
       cell: (row) =>
         can.update || can.delete ? (
-          <DropdownMenu>
-            {/* Base UI composes via `render`; Radix's `asChild` would nest buttons. */}
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon" />}
-              aria-label={`Actions for ${row.name}`}
-            >
-              <MoreHorizontal className="size-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {can.update && (
-                <DropdownMenuItem onClick={() => setEditing(row)}>
-                  <Pencil className="size-4" />
-                  Edit
-                </DropdownMenuItem>
-              )}
-              {can.delete && (
-                <DropdownMenuItem variant="destructive" onClick={() => setDeleting(row)}>
-                  <Trash2 className="size-4" />
-                  Delete
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          // The row itself navigates to the detail page on click; without this,
+          // that click handler fires the instant the ⋯ button is pressed (click
+          // events bubble regardless of what the target does) and the row
+          // navigates away before the menu can ever be used.
+          <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              {/* Base UI composes via `render`; Radix's `asChild` would nest buttons. */}
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon" />}
+                aria-label={`Actions for ${row.name}`}
+              >
+                <MoreHorizontal className="size-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {can.update && (
+                  <DropdownMenuItem onClick={() => setEditing(row)}>
+                    <Pencil className="size-4" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {can.delete && (
+                  <DropdownMenuItem variant="destructive" onClick={() => setDeleting(row)}>
+                    <Trash2 className="size-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         ) : null,
     },
   ];

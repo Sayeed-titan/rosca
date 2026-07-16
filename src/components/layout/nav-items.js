@@ -7,6 +7,7 @@ import {
   BarChart3,
   ScrollText,
   Settings,
+  CalendarDays,
 } from "lucide-react";
 
 import { Permission } from "@/core/auth/permissions";
@@ -53,11 +54,16 @@ export const NAV_ITEMS = [
     permission: Permission.DRAW_VIEW,
   },
   {
+    href: "/calendar",
+    label: "Calendar",
+    icon: CalendarDays,
+    permission: Permission.COMMITTEE_VIEW,
+  },
+  {
     href: "/reports",
     label: "Reports",
     icon: BarChart3,
     permission: Permission.REPORT_VIEW,
-    soon: true,
   },
   {
     href: "/audit",
@@ -70,6 +76,5 @@ export const NAV_ITEMS = [
     label: "Settings",
     icon: Settings,
     permission: Permission.SETTINGS_VIEW,
-    soon: true,
   },
 ];

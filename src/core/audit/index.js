@@ -20,6 +20,7 @@ export const AuditAction = {
   LOGIN: "auth.login",
   LOGIN_FAILED: "auth.login_failed",
   LOGOUT: "auth.logout",
+  SIGNUP: "auth.signup",
 
   MEMBER_CREATE: "member.create",
   MEMBER_UPDATE: "member.update",
@@ -41,6 +42,7 @@ export const AuditAction = {
   DRAW_OVERRIDE: "draw.override",
 
   SETTINGS_UPDATE: "settings.update",
+  ORG_UPDATE: "org.update",
   ORG_MEMBER_ROLE_CHANGE: "org.member_role_change",
 };
 

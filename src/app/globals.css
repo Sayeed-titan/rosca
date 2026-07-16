@@ -256,17 +256,48 @@
   }
 
   #receipt-print-area,
-  #receipt-print-area * {
+  #receipt-print-area *,
+  #report-print-area,
+  #report-print-area * {
     visibility: visible;
   }
 
-  #receipt-print-area {
+  #receipt-print-area,
+  #report-print-area {
     position: absolute;
     inset: 0 auto auto 0;
     width: 100%;
     padding: 0;
     border: 0;
     box-shadow: none;
+  }
+
+  /* A long report must paginate rather than clip at one page. */
+  #report-print-area {
+    background: none !important;
+    backdrop-filter: none !important;
+  }
+
+  #report-print-area table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10pt;
+  }
+
+  #report-print-area th,
+  #report-print-area td {
+    border-bottom: 1px solid #ddd;
+    padding: 4px 6px;
+  }
+
+  /* Repeat the header on every printed page — a 40-row report spanning three
+     pages is unreadable if only the first has column names. */
+  #report-print-area thead {
+    display: table-header-group;
+  }
+
+  #report-print-area tr {
+    break-inside: avoid;
   }
 
   [data-slot="dialog-overlay"] {

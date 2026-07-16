@@ -3,7 +3,8 @@
 import { AuthError } from "next-auth";
 
 import { signIn, signOut } from "@/core/auth";
-import { loginSchema } from "./schema";
+import { loginSchema, signupSchema } from "./schema";
+import { registerOwner } from "./signup-service";
 import { ok, err } from "@/core/result";
 import { ErrorCode } from "@/core/errors";
 
@@ -38,6 +39,43 @@ export async function loginAction(input) {
         ErrorCode.UNAUTHENTICATED,
         "Incorrect email or password."
       );
+    }
+    throw error;
+  }
+
+  return ok({ redirectTo: "/dashboard" });
+}
+
+/**
+ * Register a new owner + their organization, then sign them straight in.
+ *
+ * Signing in here rather than bouncing to /login is deliberate: making someone
+ * retype the password they just chose, seconds after choosing it, is friction
+ * with no security benefit — they've already proved they know it.
+ *
+ * If the sign-in somehow fails, the account still exists and is valid, so we say
+ * so and send them to /login rather than implying the signup failed.
+ */
+export async function signupAction(input) {
+  const parsed = signupSchema.safeParse(input);
+  if (!parsed.success) {
+    return err(ErrorCode.VALIDATION, "Please fix the highlighted fields.", {
+      fields: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const result = await registerOwner(parsed.data);
+  if (!result.ok) return result;
+
+  try {
+    await signIn("credentials", {
+      email: parsed.data.email.trim().toLowerCase(),
+      password: parsed.data.password,
+      redirect: false,
+    });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return ok({ redirectTo: "/login", needsManualLogin: true });
     }
     throw error;
   }

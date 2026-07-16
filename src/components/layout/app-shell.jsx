@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { CircleDollarSign, LogOut, Menu, X, ShieldCheck } from "lucide-react";
+import { CircleDollarSign, LogOut, Menu, X, ShieldCheck, Pencil } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { ThemeToggle } from "./theme-toggle";
 import { CommitteeSwitcher } from "./committee-switcher";
 import { NAV_ITEMS } from "./nav-items";
 import { logoutAction } from "@/features/auth/actions";
+import { OrganizationNameDialog } from "@/features/organization/components/organization-name-dialog";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 
 const ROLE_LABEL = {
   ORG_OWNER: "Owner",
@@ -37,9 +39,19 @@ function initials(name, email) {
  *
  * Filtering is cosmetic: the service layer is what actually refuses.
  */
-export function AppShell({ actor, allowedHrefs, committees, currentCommitteeId, children }) {
+export function AppShell({
+  actor,
+  allowedHrefs,
+  committees,
+  currentCommitteeId,
+  notifications = [],
+  unreadCount = 0,
+  children,
+}) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [renamingOrg, setRenamingOrg] = useState(false);
+  const canRenameOrg = actor.role === "ORG_OWNER";
 
   const navItems = NAV_ITEMS.filter((item) => allowedHrefs.includes(item.href));
 
@@ -99,12 +111,32 @@ export function AppShell({ actor, allowedHrefs, committees, currentCommitteeId, 
       </Link>
 
       {org && (
-        <div className="glass mt-5 rounded-lg px-3 py-2.5">
+        <div className="glass group/org mt-5 rounded-lg px-3 py-2.5">
           <p className="text-muted-foreground text-[10px] font-medium uppercase tracking-wide">
             Organization
           </p>
-          <p className="truncate text-sm font-medium">{org.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium">{org.name}</p>
+            {canRenameOrg && (
+              <button
+                type="button"
+                onClick={() => setRenamingOrg(true)}
+                aria-label="Rename organization"
+                className="text-muted-foreground hover:text-foreground shrink-0 opacity-0 transition-opacity group-hover/org:opacity-100 focus-visible:opacity-100"
+              >
+                <Pencil className="size-3" />
+              </button>
+            )}
+          </div>
         </div>
+      )}
+
+      {canRenameOrg && (
+        <OrganizationNameDialog
+          open={renamingOrg}
+          onOpenChange={setRenamingOrg}
+          currentName={org?.name}
+        />
       )}
 
       <CommitteeSwitcher committees={committees} selectedId={currentCommitteeId} />
@@ -190,6 +222,7 @@ export function AppShell({ actor, allowedHrefs, committees, currentCommitteeId, 
             <Menu className="size-4" />
           </Button>
           <div className="flex-1" />
+          <NotificationBell notifications={notifications} unreadCount={unreadCount} />
           <ThemeToggle />
         </header>
 

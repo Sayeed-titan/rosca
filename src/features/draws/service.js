@@ -14,6 +14,7 @@ import {
 } from "@/core/draw/rng";
 import { collectionStatusForCycle } from "@/core/ledger";
 import { potForCycle, formatMoney } from "@/core/money";
+import { notifyOrganization } from "@/core/notifications";
 import { toDrawDto } from "./dto";
 
 /**
@@ -320,10 +321,30 @@ export async function runDraw(db, actor, input, now = new Date()) {
       });
 
       // Last cycle? The committee is done.
-      if (cycleNumber === committee.totalSeats) {
+      const isFinalCycle = cycleNumber === committee.totalSeats;
+      if (isFinalCycle) {
         await tx.committee.update({
           where: { id: committee.id },
           data: { status: "COMPLETED" },
+        });
+      }
+
+      // Tell everyone who won. Inside the transaction so the announcement can't
+      // exist for a draw that rolled back — an in-app notification is just a
+      // row, so this costs nothing and can't fail independently.
+      await notifyOrganization(tx, {
+        type: "WINNER_ANNOUNCED",
+        title: `${winner.member.fullName} won cycle ${cycleNumber}`,
+        body: `${committee.name} — ${formatMoney(payoutMinor, committee.currency, committee.currencyExponent)}${created.isOverride ? " (drawn with override)" : ""}`,
+        payload: { committeeId: committee.id, drawId: created.id, cycleNumber },
+      });
+
+      if (isFinalCycle) {
+        await notifyOrganization(tx, {
+          type: "COMMITTEE_COMPLETED",
+          title: `${committee.name} is complete`,
+          body: `All ${committee.totalSeats} cycles drawn — every seat has received the pot.`,
+          payload: { committeeId: committee.id },
         });
       }
 

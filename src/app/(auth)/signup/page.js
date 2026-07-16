@@ -1,13 +1,11 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShieldCheck, Dices, ReceiptText, CircleDollarSign } from "lucide-react";
 
 import { getActor } from "@/core/auth/session";
-import { LoginForm } from "@/features/auth/components/login-form";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SignupForm } from "@/features/auth/components/signup-form";
 
-export const metadata = { title: "Sign in" };
+export const metadata = { title: "Create your organization" };
 
 const HIGHLIGHTS = [
   {
@@ -27,8 +25,8 @@ const HIGHLIGHTS = [
   },
 ];
 
-export default async function LoginPage() {
-  // Already signed in? Don't show a login form.
+export default async function SignupPage() {
+  // Already signed in? Creating a second org from here would be confusing.
   const actor = await getActor();
   if (actor) redirect("/dashboard");
 
@@ -46,13 +44,12 @@ export default async function LoginPage() {
         <div className="max-w-md space-y-8">
           <div className="space-y-3">
             <h1 className="text-4xl font-semibold tracking-tight text-balance xl:text-5xl">
-              Run your committee{" "}
-              <span className="brand-text-gradient">without the arguments</span>
+              Start your committee{" "}
+              <span className="brand-text-gradient">in a minute</span>
             </h1>
             <p className="text-muted-foreground text-pretty">
-              ROSCA, Committee, Chit Fund, Samity — whatever you call it, the hard
-              part is trust. CircleFund makes the draw verifiable and the books
-              exact.
+              Create your organization, add the members, and collect the first
+              cycle. No spreadsheets, no arguments about whose turn it is.
             </p>
           </div>
 
@@ -60,7 +57,7 @@ export default async function LoginPage() {
             {HIGHLIGHTS.map(({ icon: Icon, title, body }) => (
               <li key={title} className="flex gap-3.5">
                 <div className="glass mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg">
-                  <Icon className="size-4 text-brand-1" aria-hidden="true" />
+                  <Icon className="text-brand-1 size-4" aria-hidden="true" />
                 </div>
                 <div className="space-y-0.5">
                   <p className="text-sm font-medium">{title}</p>
@@ -87,49 +84,27 @@ export default async function LoginPage() {
               </div>
               <span className="font-semibold tracking-tight">CircleFund</span>
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight">Welcome back</h2>
+            <h2 className="text-2xl font-semibold tracking-tight">
+              Create your organization
+            </h2>
             <p className="text-muted-foreground text-sm">
-              Sign in to manage your committees.
+              You&apos;ll be the owner, with full control over committees, members
+              and draws.
             </p>
           </div>
 
-          {/* useSearchParams needs a Suspense boundary — without it the whole route
-              opts out of static rendering. */}
-          <Suspense fallback={<Skeleton className="h-64 w-full rounded-lg" />}>
-            <LoginForm />
-          </Suspense>
+          <SignupForm />
 
           <div className="border-border/60 mt-8 border-t pt-5">
             <p className="text-muted-foreground text-sm">
-              New here?{" "}
+              Already have an account?{" "}
               <Link
-                href="/signup"
+                href="/login"
                 className="text-foreground font-medium underline underline-offset-4"
               >
-                Create your organization
+                Sign in
               </Link>
             </p>
-          </div>
-
-          <div className="border-border/60 mt-5 border-t pt-5">
-            <p className="text-muted-foreground mb-2 text-xs font-medium">
-              Demo accounts — password{" "}
-              <code className="bg-muted rounded px-1 py-0.5 font-mono">Password123!</code>
-            </p>
-            <ul className="text-muted-foreground grid gap-1 text-xs">
-              <li className="flex justify-between gap-2">
-                <code className="font-mono">owner@circlefund.dev</code>
-                <span>Org owner</span>
-              </li>
-              <li className="flex justify-between gap-2">
-                <code className="font-mono">manager@circlefund.dev</code>
-                <span>Manager</span>
-              </li>
-              <li className="flex justify-between gap-2">
-                <code className="font-mono">member@circlefund.dev</code>
-                <span>Member</span>
-              </li>
-            </ul>
           </div>
         </div>
       </section>

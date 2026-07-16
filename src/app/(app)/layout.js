@@ -4,6 +4,10 @@ import { getActor } from "@/core/auth/session";
 import { can } from "@/core/auth/rbac";
 import { forOrganization } from "@/core/db/tenant";
 import { getResolvedCurrentCommittee } from "@/core/current-committee";
+import {
+  listNotifications,
+  countUnread,
+} from "@/features/notifications/service";
 import { NAV_ITEMS } from "@/components/layout/nav-items";
 import { AppShell } from "@/components/layout/app-shell";
 
@@ -40,7 +44,11 @@ export default async function AppLayout({ children }) {
   };
 
   const db = forOrganization(actor.organizationId);
-  const { committees, current } = await getResolvedCurrentCommittee(db);
+  const [{ committees, current }, notifications, unreadCount] = await Promise.all([
+    getResolvedCurrentCommittee(db),
+    listNotifications(db, actor.userId),
+    countUnread(db, actor.userId),
+  ]);
 
   return (
     <AppShell
@@ -48,6 +56,8 @@ export default async function AppLayout({ children }) {
       allowedHrefs={allowedHrefs}
       committees={committees}
       currentCommitteeId={current?.id ?? null}
+      notifications={notifications}
+      unreadCount={unreadCount}
     >
       {children}
     </AppShell>
