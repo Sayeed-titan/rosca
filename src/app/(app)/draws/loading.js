@@ -1,5 +1,5 @@
-import { TableSkeleton } from "@/components/common/table-skeleton";
+import { DrawBoardLoading } from "@/components/common/draw-board-loading";
 
 export default function Loading() {
-  return <TableSkeleton columns={6} rows={6} />;
+  return <DrawBoardLoading />;
 }

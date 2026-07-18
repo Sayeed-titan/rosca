@@ -54,7 +54,12 @@ export function CommitteeSwitcher({ committees, selectedId }) {
       <p className="text-muted-foreground px-1 text-[10px] font-medium uppercase tracking-wide">
         Committee
       </p>
-      <Select value={selectedId ?? undefined} onValueChange={handleChange} disabled={isPending}>
+      <Select
+        items={Object.fromEntries(committees.map((c) => [c.id, c.name]))}
+        value={selectedId ?? undefined}
+        onValueChange={handleChange}
+        disabled={isPending}
+      >
         <SelectTrigger className="w-full" aria-label="Selected committee">
           <SelectValue placeholder="Choose a committee" />
         </SelectTrigger>
